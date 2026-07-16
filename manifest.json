@@ -1,0 +1,14 @@
+{
+  "name": "Ma Séance — Muscu",
+  "short_name": "Muscu",
+  "description": "Suivi de mes séances de musculation : charges, reps, progression.",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#0e1116",
+  "theme_color": "#0e1116",
+  "icons": [
+    { "src": "icon-180.png", "sizes": "180x180", "type": "image/png" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png" }
+  ]
+}
