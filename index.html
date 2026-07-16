@@ -83,6 +83,9 @@
   .load input:focus{border-color:var(--accent,var(--lime));}
   .load input::placeholder{color:var(--muted);font-weight:500;}
   .load .x{font-size:13px;color:var(--muted);font-weight:700;}
+  .load .note{width:100%;margin-top:8px;background:transparent;border:1px dashed var(--line);border-radius:9px;color:var(--muted);font-size:12px;padding:8px 10px;outline:none;}
+  .load .note:focus{border-style:solid;border-color:var(--accent,var(--lime));color:var(--ink);}
+  .load .note::placeholder{color:#5b6572;}
 
   /* Edit controls */
   .editrow{display:flex;gap:8px;margin-top:10px;border-top:1px dashed var(--line);padding-top:9px;}
@@ -148,6 +151,10 @@
 
   .toast{position:fixed;left:50%;bottom:100px;transform:translateX(-50%) translateY(18px);background:var(--teal);color:#06231a;font-weight:800;font-size:13px;padding:11px 20px;border-radius:99px;opacity:0;transition:.25s;pointer-events:none;z-index:200;box-shadow:0 8px 30px rgba(0,0,0,.4);}
   .toast.on{opacity:1;transform:translateX(-50%) translateY(0);}
+  .recap-line{font-size:14px;color:var(--muted);margin:10px 0;line-height:1.5;}
+  .recap-big{font-size:28px;font-weight:800;color:var(--lime);display:block;}
+  .recap-note{font-size:10.5px;color:#5b6572;display:block;}
+  .recap-msg{font-size:13px;color:var(--ink);margin-top:14px;line-height:1.6;font-weight:600;}
 </style>
 </head>
 <body>
@@ -223,6 +230,15 @@
 </div>
 
 <div class="toast" id="toast"></div>
+
+<div class="mbg" id="recapModal">
+  <div class="modal" style="text-align:center">
+    <div style="font-size:44px;margin-bottom:4px">🏆</div>
+    <h3 id="recapTitle" style="text-align:center">Séance terminée !</h3>
+    <div id="recapBody"></div>
+    <div class="acts"><button class="ok" id="recapClose" style="flex:1">Fermer</button></div>
+  </div>
+</div>
 
 <div class="mbg" id="copyModal">
   <div class="modal">
@@ -357,6 +373,7 @@ if(!DATA.plans)DATA.plans={};
 if(!DATA.custom)DATA.custom={};
 if(!DATA.loads)DATA.loads={};
 if(!DATA.checks)DATA.checks={};
+if(!DATA.notes)DATA.notes={};   // notes par exercice (clé = nom normalisé)
 
 /* ================= HELPERS ================= */
 function planFor(w){return (DATA.plans[w]&&DATA.plans[w].length===7)?DATA.plans[w]:DEFAULT_PLAN.slice();}
@@ -460,6 +477,7 @@ function render(){
           <span class="x">kg ×</span>
           <input type="number" inputmode="numeric" placeholder="reps" data-r="${e.id}" value="${load&&load.r?load.r:''}" style="max-width:76px">
         </div>
+        <input type="text" class="note" placeholder="📝 note / réglages (ex. siège cran 4)" data-note="${normName(e.nm)}" value="${(DATA.notes[normName(e.nm)]||'').replace(/"/g,'&quot;')}">
       </div>
       ${editControls}
     </div>`;
@@ -482,6 +500,21 @@ function render(){
       saveData();
       card.classList.toggle('done',!!DATA.checks[lk]);
       updateProg(s,w,i);
+      // récap si on vient de cocher le DERNIER exo
+      if(DATA.checks[lk]){
+        let done=0;s.ex.forEach(e=>{if(DATA.checks[loadKey(w,i,e.id)])done++;});
+        if(done===s.ex.length&&s.ex.length>0)showRecap(s,w,i);
+      }
+    });
+  });
+  // notes : sauvegarde auto quand on quitte le champ
+  bodyEl.querySelectorAll('.note[data-note]').forEach(inp=>{
+    inp.addEventListener('change',()=>{
+      const key=inp.getAttribute('data-note'), v=inp.value.trim();
+      if(v)DATA.notes[key]=v; else delete DATA.notes[key];
+      saveData();
+      // synchroniser les autres champs du même exercice affichés
+      bodyEl.querySelectorAll(`.note[data-note="${key}"]`).forEach(o=>{if(o!==inp)o.value=v;});
     });
   });
   // edit/del
@@ -500,6 +533,26 @@ function updateProg(s,w,i){
   const total=s.ex.length;let done=0;
   s.ex.forEach(e=>{if(DATA.checks[loadKey(w,i,e.id)])done++;});
   progFill.style.width=total?(done/total*100)+'%':'0%';
+}
+
+// Récap de fin de séance : exos faits + tonnage estimé (charge × reps × séries)
+function showRecap(s,w,i){
+  let tonnage=0, withData=0;
+  s.ex.forEach(e=>{
+    const l=DATA.loads[loadKey(w,i,e.id)];
+    if(l&&l.w){
+      const chg=parseFloat(l.w), reps=parseFloat(l.r)||10, sets=parseFloat(e.sets)||3;
+      if(!isNaN(chg)){tonnage+=chg*reps*sets;withData++;}
+    }
+  });
+  document.getElementById('recapTitle').textContent="Séance terminée ! 🎉";
+  let html=`<div class="recap-line"><span class="recap-big">${s.ex.length}</span> exercices faits</div>`;
+  if(tonnage>0){
+    html+=`<div class="recap-line"><span class="recap-big">${Math.round(tonnage).toLocaleString('fr-FR')}</span> kg soulevés au total <span class="recap-note">(estimation : charge × reps × séries${withData<s.ex.length?', sur les exos notés':''})</span></div>`;
+  }
+  html+=`<div class="recap-msg">${s.name} · Semaine ${w} · ${WEEKDAYS[i]}<br>Bien joué, à la prochaine ! 💪</div>`;
+  document.getElementById('recapBody').innerHTML=html;
+  document.getElementById('recapModal').classList.add('on');
 }
 
 /* ================= SAVE CHARGES ================= */
@@ -691,6 +744,8 @@ function drawProg(nameKey,meta){
 /* ================= TOAST ================= */
 let toastT;
 function showToast(msg){toast.textContent=msg;toast.classList.add('on');clearTimeout(toastT);toastT=setTimeout(()=>toast.classList.remove('on'),1600);}
+document.getElementById('recapClose').addEventListener('click',()=>document.getElementById('recapModal').classList.remove('on'));
+document.getElementById('recapModal').addEventListener('click',e=>{if(e.target.id==='recapModal')document.getElementById('recapModal').classList.remove('on');});
 
 /* ================= SAUVEGARDE PAR LIEN ================= */
 document.getElementById('copyLinkBtn').addEventListener('click',()=>{
